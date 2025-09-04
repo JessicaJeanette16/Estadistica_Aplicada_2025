@@ -1,0 +1,1655 @@
+---
+title: "Estadística Descriptiva. Gráficas Variables Cuantitativas."
+format: 
+  html:
+    grid: 
+      body-width: 950px
+editor: visual
+lang: es
+---
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(sf)          # Para datos espaciales
+library(viridis)     # Para paletas de colores
+library(janitor)    # Para limpiar nombres de columnas
+library(scales)     # Para mejorar ejes en gráficos
+
+```
+
+# Objetivo
+
+El objetivo de este documento es realizar un análisis exploratorio de datos (EDA) utilizando técnicas de estadística descriptiva y visualización gráfica. Nos enfocaremos en variables cuantitativas, una a la vez, aplicando diversas representaciones gráficas para comprender mejor la distribución y características de los datos.
+
+Uno de los primeros temas que exploraremos en la estadística inferencial será la estimación de parametros, por lo que es fundamental entender cómo se comportan las variables en una muestra.
+
+# Datos espaciales de Nayarit
+
+```{r municipios}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+#municipios_nayarit <- st_read("1_estadistica_descriptiva/data/18mun.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+municipios_nayarit <- st_read("data/18mun.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+
+# Crear mapa de municipios de Nayarit
+mapa_municipios <- ggplot(municipios_nayarit) +
+  geom_sf(fill = "#8B0000", color = "#F5F5F5", size = 0.3) +
+  labs(
+    title = "Municipios de Nayarit",
+    subtitle = paste("Total de municipios:", nrow(municipios_nayarit)),
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+print(mapa_municipios)
+```
+
+# Fuente de datos: INEGI
+
+Para este ejemplo, utilizaremos los datos del **Instituto Nacional de Estadística y Geografía (INEGI)** de México. Específicamente, los Censos y Conteos de Población y Vivienda disponible en:
+
+**Enlace de descarga**: https://inegi.org.mx/app/descarga/
+
+Buscar: Estado. Seleccionar: Programas \> Censos y Conteos de Población y Vivienda \> 2020 \> Indicadores 1900-2020 y descargar el archivo CSV.
+
+Extraer el archivo `cpv_valor_18.csv` y guardarlo en la carpeta `data/`.
+
+# Lectura de datos
+
+Carguemos los datos de población y vivienda para el año 2020, filtrando por algunos indicadores relevantes:
+
+-   Edad mediana
+-   Porcentaje de la población femenina de 12 años y más económicamente activa
+-   Porcentaje de la población masculina de 12 años y más económicamente activa
+-   Porcentaje de la población de 5 años y más hablante de lengua indígena
+-   Viviendas particulares habitadas
+-   Porcentaje de población inmigrante (migración reciente)
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+
+#datos_total <- read_csv("1_estadistica_descriptiva/data/cpv_valor_18.csv", na = c("ND"))
+datos_total <- read_csv("data/cpv_valor_18.csv", na = c("ND"))
+
+datos_total <- datos_total |> filter(año == 2020)
+#unique(datos_total$indicador)
+datos_seleccion <- datos_total |> 
+  filter(indicador %in% c("Edad mediana", "Porcentaje de la población femenina de 12 años y más económicamente activa","Porcentaje de la población masculina de 12 años y más económicamente activa", "Porcentaje de la población de 5 años y más hablante de lengua indígena", "Viviendas particulares habitadas", "Porcentaje de población inmigrante (migración reciente)"), desc_municipio != "Estatal") |> 
+  select(desc_municipio, indicador, valor)
+```
+
+Cambiamos el formato de los datos para que cada indicador sea una columna separada, facilitando el análisis posterior. Además, limpiamos los nombres de las columnas para que sean más manejables y creamos una columna `NOMGEO` para poder unir los datos espaciales con los datos de población y vivienda.
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+datos <- datos_seleccion |>
+    pivot_wider(names_from = indicador, values_from = valor) 
+
+datos <- datos |> 
+  clean_names() 
+
+# Corrección de nombres de municipios
+
+datos <- datos |> 
+  mutate(desc_municipio = if_else(desc_municipio == "Nayarit", "Nayarit", desc_municipio))
+
+datos <- datos |> 
+  mutate(NOMGEO = desc_municipio)
+```
+
+# Estadísticas descriptivas
+
+Ahora que tenemos nuestros datos preparados, podemos realizar un resumen numérico de las variables cuantitativas. Para ello, utilizaremos la función `summary()` de R, que nos proporcionará un resumen estadístico de cada variable, incluyendo la media, mediana, mínimo, máximo y cuartiles. Hay que agregar las demás medidas de dispersión analizadas en clase (desviación media, varianza, rango, etc.) para cada variable cuantitativa.
+
+```{r}
+#| code-fold: true
+
+summary(datos)
+```
+
+Se unen los datos geograficos de los municipios de Nayarit con los datos de población y vivienda. Esto nos permitirá crear mapas y realizar análisis espaciales. Para preservar la integridad de los datos, utilizamos `left_join()` de `dplyr`, el primer conjunto de datos debe ser el que contenga la columna `geometry`.
+
+```{r}
+#| code-fold: true
+
+datos <- left_join(municipios_nayarit, datos)
+```
+
+# Edad (Mediana)
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = edad_mediana), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Edad (mediana)"
+  ) +
+  labs(
+    title = "Edad (mediana) de los Municipios de Nayarit",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(edad_mediana), color="black", fill = "#D02090", boundary=min(datos$edad_mediana), binwidth = 2) +
+  labs(
+    title = "Distribución de la Edad",
+    x = "Edad (años)", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+```
+
+## Gráfica de densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(edad_mediana), color="black", fill = "#8B2252", alpha=0.6) +
+  labs(
+    title = "Distribución de la Edad",
+    x = "Edad (años)", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = edad_mediana)) +
+    geom_boxplot(
+    fill = "#FFC0CB",           # Color de relleno
+    color = "#FF3E96",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#FF0000",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#8B2252", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de la Edad (mediana)", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = edad_mediana)) +
+    geom_violin(fill = "#FFC0CB", color = "#FFDAB9", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "#FFDAB9", alpha = 0.9,
+    outlier.color = "#8B0000", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#EECBAD", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#030303", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de la Edad (mediana)", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = edad_mediana)) +
+    stat_qq(color = "#8B0A50", size = 2.5, alpha = 0.9) +
+    stat_qq_line(color = "#8B7500", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Edad mediana)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "años")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Edad Mediana - Población Nayarit") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+
+
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = edad_mediana, y = reorder(NOMGEO, edad_mediana))) +
+  geom_point(color = "#8B008B", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = edad_mediana, y = NOMGEO, yend = NOMGEO),
+    color = "#BDC3C7", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Edad (años)",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Edad (mediana) por Municipio",
+    subtitle = "Estado de Nayarit") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+
+# 1.1Viviendas particulares habitadas
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = viviendas_particulares_habitadas), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "viviendas (particulares)"
+    
+  ) +
+  labs(
+    title = "viviendas particulares habitadas de los Municipios de Nayarit",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+```
+
+## 1.2.Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(viviendas_particulares_habitadas), color="#27408B", fill = "orange", boundary=min(datos$viviendas_particulares_habitadas), binwidth = 2) +
+  labs(
+    title = "Distribucion e viviendas habitadas particulares",
+    x = "Viviendas (por unidad geografica)", y = "Frecuencia (numero de localidades)"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+```
+
+
+## 1.3.Gráfica de densidad 
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(viviendas_particulares_habitadas), color="black", fill = "#104E8B", alpha=0.9) +
+  labs(
+    title = "Distribución de viviendas particulares ",
+    x = "Numero de viviendas particulares abitadas", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+
+```
+
+
+## 1.4.Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = viviendas_particulares_habitadas)) +
+    geom_boxplot(
+    fill = "#8EE5EE",           # Color de relleno
+    color = "#2C3E50",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#FF8C00",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#1B4F72", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "viviendas")) +
+  labs(title = "Distribución de viviendas particulares", 
+  subtitle = "Viviendas particulares del Estado de Nayarit",
+  y = "viviendas particulares habitadas",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+
+## 1.5.Gráfico de violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = viviendas_particulares_habitadas)) +
+    geom_violin(fill = "#C6E2FF", color = "#4682B4", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "#6C7B8B", alpha = 0.9,
+    outlier.color = "#8B0000", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#6C7B8B", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#0000FF", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "viviendas")) +
+  labs(title = "Distribución de viviendas particulares habitadas por localidad", 
+  subtitle = "Datos del estado de Nayarit-INEGI",
+  y = "Viviendas",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+## 1.6.Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = viviendas_particulares_habitadas)) +
+    stat_qq(color = "#00008B", size = 3, alpha = 0.8) +
+    stat_qq_line(color = "#528B8B", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Numero de viviendas particulares)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "casas")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Variable viviendas particulares habitadas - Estado de Nayarit") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+
+
+```
+
+## 1.7.Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = viviendas_particulares_habitadas, y = reorder(NOMGEO, edad_mediana))) +
+  geom_point(color = "#104E8B", size = 3.5, alpha = 0.9) +
+  geom_segment(aes(x = 0, xend = viviendas_particulares_habitadas, y = NOMGEO, yend = NOMGEO),
+    color = "#1E90FF", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Viviendas (particulares)",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Viviendas (part) por Municipio",
+    subtitle = "Estado de Nayarit") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#F0FFF0", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+
+
+# 2.1Porcentaje de poblacion inmigrante (migracion reciente)
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_poblacion_inmigrante_migracion_reciente), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Poblacion inmigrante (migracion reciente)"
+  ) +
+  labs(
+    title = "Poblacion inmigrante (migracion reciente) de los Municipios de Nayarit",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+```
+
+
+## 2.2Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(porcentaje_de_poblacion_inmigrante_migracion_reciente), color="black", fill = "#66CD00", boundary=min(datos$porcentaje_de_poblacion_inmigrante_migracion_reciente), binwidth = 2) +
+  labs(
+    title = "Distribución de la poblacion inmigrante",
+    x = "Poblacion", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+```
+
+
+## 2.3Gráfica de densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(porcentaje_de_poblacion_inmigrante_migracion_reciente), color="black", fill = "#008B00", alpha=0.6) +
+  labs(
+    title = "Distribución de la poblacion inmigrante",
+    x = "Edad (años)", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+
+```
+
+
+## 2.4Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_poblacion_inmigrante_migracion_reciente)) +
+    geom_boxplot(
+    fill = "#CAFF70",           # Color de relleno
+    color = "#008B00",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#8B0000",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#556B2F", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de la poblacion inmigrante (migracion reciente)", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+
+## 2.5Gráfico de violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_poblacion_inmigrante_migracion_reciente)) +
+    geom_violin(fill = "#98FB98", color = "#98FB98", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "#7CCD7C", alpha = 0.9,
+    outlier.color = "#8B2500", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#7CCD7C", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#548B54", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de la poblacion inmigrante (migracion reciente)", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+
+## 2.6.Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = porcentaje_de_poblacion_inmigrante_migracion_reciente)) +
+    stat_qq(color = "#458B00", size = 2.5, alpha = 0.9) +
+    stat_qq_line(color = "#CAFF70", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (poblacion inmigrante)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "años")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Inmigrantes - Población Nayarit") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#FFFFF0", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+
+
+```
+
+
+## 2.7.Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = porcentaje_de_poblacion_inmigrante_migracion_reciente, y = reorder(NOMGEO, porcentaje_de_poblacion_inmigrante_migracion_reciente))) +
+  geom_point(color = "#2E8B57", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = porcentaje_de_poblacion_inmigrante_migracion_reciente, y = NOMGEO, yend = NOMGEO),
+    color = "#43CD80", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Poblacion (porcentaje)",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Poblacion inmigrante (migracion reciente) por Municipio",
+    subtitle = "Estado de Nayarit") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+
+# 3.1Porcentaje de la poblacion de 5 anos y mas hablante de lengua indigena
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Porcentaje de la poblacion de 5 años y mas hablantes de lengua indigena"
+  ) +
+  labs(
+    title = "Poblacion hablante de lengua indigena de los Municipios de Nayarit",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+```
+
+## 3.2Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena), color="black", fill = "#FFFF00", boundary=min(datos$porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena), binwidth = 2) +
+  labs(
+    title = "Distribución de los hablantes lengua indigena",
+    x = "Edad (años)", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+```
+
+## 3.3Gráfica de densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena), color="black", fill = "#FFD700", alpha=0.6) +
+  labs(
+    title = "Distribución de hablantes de lengua indigena",
+    x = "Edad (años)", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+
+```
+
+## 3.4Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena)) +
+    geom_boxplot(
+    fill = "#FFFF00",           # Color de relleno
+    color = "#EEEE00",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#CD0000",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#8B8B00", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de hablantes lengua indigena", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Porcentaje",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## 3.5Gráfico de violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena)) +
+    geom_violin(fill = "#FFEC8B", color = "#FFF68F", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "#8B864E", alpha = 0.9,
+    outlier.color = "#B22222", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#FFFF00", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#FA8072", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de los hablantes lengua indigena", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Porcentaje de poblacion",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+## 3.6Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena)) +
+    stat_qq(color = "#FFFF00", size = 2.5, alpha = 0.9) +
+    stat_qq_line(color = "#8B8B00", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Edad mediana)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "años")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Hablantes de lengua indigena - Población Nayarit") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#FFFAFA", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+
+
+```
+
+## 3.7Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena, y = reorder(NOMGEO, porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena))) +
+  geom_point(color = "#FFFF00", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = porcentaje_de_la_poblacion_de_5_anos_y_mas_hablante_de_lengua_indigena, y = NOMGEO, yend = NOMGEO),
+    color = "#CDCD00", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Edad (años)",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Poblacion hablante de lengua indigena por Municipio",
+    subtitle = "Estado de Nayarit") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#333333", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#333333", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+
+# 4.1Porcentaje de la poblacion femenina de 12 años y mas economicamente activa
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Poblacion femenina economicamente activa"
+  ) +
+  labs(
+    title = "Mujeres economicamente activa de los Municipios de Nayarit",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa), color="black", fill = "#EE4000", boundary=min(datos$porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa), binwidth = 2) +
+  labs(
+    title = "Distribución de la Edad",
+    x = "Edad (años)", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+```
+
+## Gráfica de densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa), color="black", fill = "#FF8C00", alpha=0.6) +
+  labs(
+    title = "Distribución de la Edad",
+    x = "Edad (años)", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa)) +
+    geom_boxplot(
+    fill = "orange",           # Color de relleno
+    color = "#EE4000",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#FF0000",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#8B4726", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "Porcentaje")) +
+  labs(title = "Distribución de las mujeres economicamente activa", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Porcentaje (%)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa)) +
+    geom_violin(fill = "orange", color = "darkorange", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "orange3", alpha = 0.9,
+    outlier.color = "brown4", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "orange3", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#8B2500", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de las mujeres economicamente activa", 
+  subtitle = "Población del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa)) +
+    stat_qq(color = "orangered4", size = 2.5, alpha = 0.9) +
+    stat_qq_line(color = "orange", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Mujeres conomicamente activa)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "años")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Mujeres de 12 y + economicamente activa - Población Nayarit") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+
+
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa, y = reorder(NOMGEO, porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa))) +
+  geom_point(color = "#FFA500", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = porcentaje_de_la_poblacion_femenina_de_12_anos_y_mas_economicamente_activa, y = NOMGEO, yend = NOMGEO),
+    color = "darkorange3", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Edad (años)",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Mujeres economicamente activa de 12 y + por Municipio",
+    subtitle = "Estado de Nayarit") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#333333", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#333333", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+
+# 5.1Porcentaje de la poblacion masculina de 12 años y mas economicamente activa.
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Hombres economicamente activos de 12 y +"
+  ) +
+  labs(
+    title = "Hombres economicamente activos de 12 y + de los Municipios de Nayarit",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa), color="black", fill = "#EEA9B8", boundary=min(datos$porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa), binwidth = 2) +
+  labs(
+    title = "Distribución de Hombres economicante activos de 12 y +",
+    x = "Edad (años)", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+```
+
+## Gráfica de densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa), color="black", fill = "#8B636C", alpha=0.6) +
+  labs(
+    title = "Distribución de Hombres economicamente activos de 12 y +",
+    x = "Edad (años)", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+
+
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa)) +
+    geom_boxplot(
+    fill = "pink",           # Color de relleno
+    color = "pink2",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "red",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "lightpink4", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de Hombres economicamnete activos de 12 y +", 
+  subtitle = "Hombres del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa)) +
+    geom_violin(fill = "pink", color = "pink2", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "lightpink3", alpha = 0.9,
+    outlier.color = "red", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "lightpink", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "pink4", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "años")) +
+  labs(title = "Distribución de los hombres economicamnte activos de 12 y +", 
+  subtitle = "Hombres del Estado de Nayarit",
+  y = "Edad (años)",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa)) +
+    stat_qq(color = "#FF1493", size = 2.5, alpha = 0.9) +
+    stat_qq_line(color = "lightpink4", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Hombres economicamente activos de 12 y +)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "años")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Hombres economicamente activos de 12 y + Población Nayarit") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "snow", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+
+
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa, y = reorder(NOMGEO, porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa))) +
+  geom_point(color = "#FF69B4", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = porcentaje_de_la_poblacion_masculina_de_12_anos_y_mas_economicamente_activa, y = NOMGEO, yend = NOMGEO),
+    color = "pink", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Porcentaje (poblacion)",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Hombres economicamnte activos de 12 y + por Municipio",
+    subtitle = "Estado de Nayarit") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#333333", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#333333", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+```
